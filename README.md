@@ -44,3 +44,23 @@ pytest -v
 - [Architecture & Prototype Modernization](docs/ARCHITECTURE.md)
 - [Multivariate Detection Algorithms](docs/ALGORITHMS.md)
 - [Continuous Improvement System](docs/CONTINUOUS_IMPROVEMENT.md)
+
+---
+
+## Research Paper & Citation
+
+This project is based on the published Springer book chapter:
+
+> *Multi-disciplinary Trends in Artificial Intelligence* (Proceedings of the 18th International Conference, MIWAI 2025), Chapter 32  
+> Springer Nature, DOI: `10.1007/978-981-95-4957-3_32`  
+> Paper link: [SpringerLink](https://link.springer.com/chapter/10.1007/978-981-95-4957-3_32)
+
+```bibtex
+@incollection{nguyen2025cifault,
+  booktitle = {Multi-disciplinary Trends in Artificial Intelligence (MIWAI 2025)},
+  publisher = {Springer Nature},
+  year      = {2025},
+  doi       = {10.1007/978-981-95-4957-3_32},
+  url       = {https://link.springer.com/chapter/10.1007/978-981-95-4957-3_32}
+}
+```

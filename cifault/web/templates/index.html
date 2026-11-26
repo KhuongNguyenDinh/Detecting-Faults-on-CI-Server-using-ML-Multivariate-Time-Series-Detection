@@ -1,0 +1,264 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>CI-FaultGuard v2.0 — Multivariate Time-Series Fault Detection</title>
+  <style>
+    :root {
+      --bg: #0a0f1d;
+      --panel: #12192c;
+      --panel-2: #19223b;
+      --border: #263354;
+      --text: #e7edff;
+      --muted: #93a4cc;
+      --accent: #6366f1;
+      --cyan: #22d3ee;
+      --danger: #ef4444;
+      --warn: #f59e0b;
+      --ok: #22c55e;
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: var(--bg); color: var(--text); }
+    header {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 12px 22px; background: var(--panel); border-bottom: 1px solid var(--border);
+    }
+    .brand { font-weight: 700; font-size: 1.08rem; display: flex; align-items: center; gap: 10px; }
+    .badge { background: linear-gradient(135deg, var(--accent), var(--cyan)); color: #071022; padding: 2px 8px; border-radius: 6px; font-size: 0.75rem; font-weight: 800; }
+    .layout { display: grid; grid-template-columns: 300px 1fr; min-height: calc(100vh - 54px); }
+    aside { background: var(--panel); border-right: 1px solid var(--border); padding: 16px; display: flex; flex-direction: column; gap: 16px; }
+    main { padding: 18px 22px; overflow-x: auto; }
+    .card { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 14px; margin-bottom: 14px; }
+    h3 { margin: 0 0 10px 0; font-size: 0.85rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.05em; }
+    button, select, input {
+      background: var(--panel-2); color: var(--text); border: 1px solid var(--border);
+      border-radius: 8px; padding: 8px 12px; font-size: 0.86rem; width: 100%; margin-bottom: 8px;
+    }
+    button { cursor: pointer; font-weight: 600; }
+    button.primary { background: linear-gradient(135deg, var(--accent), #4f46e5); border-color: transparent; color: #fff; }
+    button:hover { border-color: var(--cyan); }
+    .kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; margin-bottom: 14px; }
+    .kpi { background: var(--panel-2); border: 1px solid var(--border); border-radius: 10px; padding: 12px; }
+    .kpi .v { font-size: 1.45rem; font-weight: 700; }
+    .kpi .l { font-size: 0.78rem; color: var(--muted); }
+    canvas { width: 100%; height: 280px; background: #080c18; border: 1px solid var(--border); border-radius: 8px; display: block; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.84rem; }
+    th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--border); }
+    th { background: var(--panel-2); color: var(--muted); }
+    .sev-CRITICAL { color: var(--danger); font-weight: 700; }
+    .sev-WARNING { color: var(--warn); font-weight: 700; }
+    .sev-INFO { color: var(--cyan); font-weight: 700; }
+    @media (max-width: 900px) { .layout { grid-template-columns: 1fr; } }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="brand">
+      <span>CI-FaultGuard</span>
+      <span class="badge">v2.0 Multivariate</span>
+    </div>
+    <div>
+      <a href="/docs" target="_blank" style="color: var(--cyan); text-decoration: none; font-size: 0.86rem;">API Docs ↗</a>
+    </div>
+  </header>
+
+  <div class="layout">
+    <aside>
+      <div class="card">
+        <h3>Detector Settings</h3>
+        <label style="font-size:0.8rem;color:var(--muted);">Algorithm</label>
+        <select id="detectorSelect">
+          {% for d in detectors %}
+          <option value="{{ d }}">{{ d }}</option>
+          {% endfor %}
+        </select>
+        <label style="font-size:0.8rem;color:var(--muted);">Score Threshold (0.1 – 0.95)</label>
+        <input id="thresholdInput" type="number" step="0.02" min="0.1" max="0.95" value="0.52" />
+      </div>
+
+      <div class="card">
+        <h3>Telemetry Source</h3>
+        <button id="btnSimulate" class="primary">Simulate Multivariate CI Faults</button>
+        <button id="btnSample">Analyze Real NodeX9WS CSV</button>
+        <input type="file" id="csvFile" accept=".csv" />
+        <button id="btnUpload">Upload &amp; Detect CSV</button>
+      </div>
+
+      <div class="card">
+        <h3>Continuous Improvement</h3>
+        <button id="btnBench">Refresh Benchmark History</button>
+        <div id="benchMini" style="font-size:0.8rem;color:var(--muted);">Click to load latest F1 metrics.</div>
+      </div>
+    </aside>
+
+    <main>
+      <div class="kpis" id="kpiRow">
+        <div class="kpi"><div class="v" id="kPoints">—</div><div class="l">Points Analyzed</div></div>
+        <div class="kpi"><div class="v" id="kFaults">—</div><div class="l">Faults Detected</div></div>
+        <div class="kpi"><div class="v" id="kRate">—</div><div class="l">Fault Rate</div></div>
+        <div class="kpi"><div class="v" id="kDetector">—</div><div class="l">Active Detector</div></div>
+      </div>
+
+      <div class="card">
+        <h3>Anomaly Score Timeline &amp; Fault Windows (<span id="sourceLabel">None</span>)</h3>
+        <canvas id="scoreChart" width="1000" height="280"></canvas>
+      </div>
+
+      <div class="card">
+        <h3>Detected Fault Events &amp; Root-Cause Attribution (Top 50)</h3>
+        <div style="max-height: 320px; overflow: auto;">
+          <table>
+            <thead>
+              <tr><th>Index</th><th>Timestamp</th><th>Score</th><th>Severity</th><th>Root-Cause Metric</th><th>Contributions</th></tr>
+            </thead>
+            <tbody id="eventsBody"></tbody>
+          </table>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <script>
+    const $ = (id) => document.getElementById(id);
+
+    function drawChart(scores, flags, threshold, groundTruth) {
+      const canvas = $("scoreChart");
+      const ctx = canvas.getContext("2d");
+      const W = canvas.width, H = canvas.height;
+      ctx.clearRect(0, 0, W, H);
+      if (!scores.length) return;
+
+      const pad = 24;
+      const plotW = W - 2 * pad, plotH = H - 2 * pad;
+
+      // Ground truth shading if available
+      if (groundTruth && groundTruth.length === scores.length) {
+        ctx.fillStyle = "rgba(34, 211, 238, 0.12)";
+        for (let i = 0; i < groundTruth.length; i++) {
+          if (groundTruth[i] === 1) {
+            const x = pad + (i / Math.max(1, scores.length - 1)) * plotW;
+            ctx.fillRect(x, pad, Math.max(2, plotW / scores.length), plotH);
+          }
+        }
+      }
+
+      // Threshold line
+      const ty = pad + (1 - threshold) * plotH;
+      ctx.strokeStyle = "rgba(245, 158, 11, 0.8)";
+      ctx.setLineDash([6, 4]);
+      ctx.beginPath();
+      ctx.moveTo(pad, ty);
+      ctx.lineTo(W - pad, ty);
+      ctx.stroke();
+      ctx.setLineDash([]);
+
+      // Score line
+      ctx.strokeStyle = "#6366f1";
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      scores.forEach((s, i) => {
+        const x = pad + (i / Math.max(1, scores.length - 1)) * plotW;
+        const y = pad + (1 - Math.min(1, Math.max(0, s))) * plotH;
+        if (i === 0) ctx.moveTo(x, y);
+        else ctx.lineTo(x, y);
+      });
+      ctx.stroke();
+
+      // Detected fault dots
+      ctx.fillStyle = "#ef4444";
+      flags.forEach((f, i) => {
+        if (f === 1) {
+          const x = pad + (i / Math.max(1, scores.length - 1)) * plotW;
+          const y = pad + (1 - Math.min(1, Math.max(0, scores[i]))) * plotH;
+          ctx.beginPath();
+          ctx.arc(x, y, 3, 0, Math.PI * 2);
+          ctx.fill();
+        }
+      });
+    }
+
+    function renderPayload(data) {
+      const r = data.report;
+      $("sourceLabel").textContent = data.source;
+      $("kPoints").textContent = r.total_points;
+      $("kFaults").textContent = r.fault_count;
+      $("kRate").textContent = `${r.fault_rate_pct}%`;
+      $("kDetector").textContent = r.detector;
+
+      drawChart(r.scores, r.is_fault, r.threshold, data.ground_truth);
+
+      $("eventsBody").innerHTML = r.events
+        .slice(0, 50)
+        .map((e) => {
+          const contrib = Object.entries(e.contributions)
+            .sort((a, b) => b[1] - a[1])
+            .slice(0, 3)
+            .map(([k, v]) => `${k}: ${v}%`)
+            .join(", ");
+          return `<tr>
+            <td>${e.index}</td>
+            <td>${e.timestamp}</td>
+            <td><strong>${e.score}</strong></td>
+            <td class="sev-${e.severity}">${e.severity}</td>
+            <td><strong>${e.root_cause_metric}</strong></td>
+            <td>${contrib}</td>
+          </tr>`;
+        })
+        .join("") || "<tr><td colspan='6'>No faults detected at current threshold.</td></tr>";
+    }
+
+    $("btnSimulate").addEventListener("click", async () => {
+      const res = await fetch("/api/simulate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          n_points: 600,
+          seed: 42,
+          detector: $("detectorSelect").value,
+          threshold: parseFloat($("thresholdInput").value),
+        }),
+      });
+      renderPayload(await res.json());
+    });
+
+    $("btnSample").addEventListener("click", async () => {
+      const res = await fetch("/api/detect/sample", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          filename: "mem_use_20_Jan_NodeX9WS.csv",
+          detector: $("detectorSelect").value,
+          threshold: parseFloat($("thresholdInput").value),
+        }),
+      });
+      renderPayload(await res.json());
+    });
+
+    $("btnUpload").addEventListener("click", async () => {
+      const f = $("csvFile").files[0];
+      if (!f) return;
+      const fd = new FormData();
+      fd.append("file", f);
+      const det = encodeURIComponent($("detectorSelect").value);
+      const thr = encodeURIComponent($("thresholdInput").value);
+      const res = await fetch(`/api/detect/upload?detector=${det}&threshold=${thr}`, { method: "POST", body: fd });
+      renderPayload(await res.json());
+    });
+
+    $("btnBench").addEventListener("click", async () => {
+      const res = await fetch("/api/benchmarks");
+      const data = await res.json();
+      if (!data.runs.length) {
+        $("benchMini").textContent = "No benchmark runs recorded yet.";
+        return;
+      }
+      const latest = data.runs[data.runs.length - 1];
+      $("benchMini").innerHTML = `Best: <strong>${latest.best_detector}</strong> (F1 = <strong>${latest.best_f1}</strong>)<br/>Run: ${latest.timestamp}`;
+    });
+
+    $("btnSimulate").click();
+    $("btnBench").click();
+  </script>
+</body>
+</html>
